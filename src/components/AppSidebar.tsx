@@ -44,21 +44,29 @@ const clientItems = [
 export function AppSidebar() {
   const { open } = useSidebar();
   const location = useLocation();
-  const { getPrimaryRole } = useUserRole();
+  const { getPrimaryRole, loading: roleLoading } = useUserRole();
   const { signOut } = useAuth();
   const currentPath = location.pathname;
 
   const primaryRole = getPrimaryRole();
-  
-  let items = clientItems;
-  let roleLabel = 'Cliente';
-  
-  if (primaryRole === 'admin') {
-    items = adminItems;
-    roleLabel = 'Administrador';
-  } else if (primaryRole === 'vet') {
-    items = vetItems;
-    roleLabel = 'Veterinario';
+
+  // Por defecto, mientras carga, no mostramos items de ningún rol
+  let items: { title: string; url: string; icon: any }[] = [];
+  let roleLabel = 'Cargando rol...';
+
+  if (!roleLoading) {
+    if (primaryRole === 'admin') {
+      items = adminItems;
+      roleLabel = 'Administrador';
+    } else if (primaryRole === 'vet') {
+      items = vetItems;
+      roleLabel = 'Veterinario';
+    } else if (primaryRole === 'client') {
+      items = clientItems;
+      roleLabel = 'Cliente';
+    } else {
+      roleLabel = 'Sin rol asignado';
+    }
   }
 
   const isActive = (path: string) => currentPath === path;

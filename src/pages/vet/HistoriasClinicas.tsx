@@ -14,6 +14,8 @@ import { toast } from 'sonner';
 import { Plus, Download, FileText } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const HistoriasClinicas = () => {
   const location = useLocation();
@@ -37,16 +39,33 @@ const HistoriasClinicas = () => {
 
   // Fetch clinical records with entries
   const { data: records = [] } = useQuery({
-    queryKey: ['clinical-records'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('clinical_records')
-        .select('*, pets(id, name, species, profiles(full_name)), clinical_entries(*)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
+  queryKey: ['clinical-records'],
+  queryFn: async () => {
+    const { data, error } = await supabase
+      .from('clinical_records')
+      .select(`
+        *,
+        pets(
+          id,
+          name,
+          species,
+          breed,
+          sex,
+          color,
+          birth_date,
+          profiles(
+            full_name,
+            phone
+          )
+        ),
+        clinical_entries(*)
+      `)
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    return data;
+  },
+});
+
 
   // Scroll to target pet card when data loads
   useEffect(() => {
@@ -96,9 +115,143 @@ const HistoriasClinicas = () => {
   });
 
   const downloadPDF = (recordId: string) => {
-    // Placeholder for PDF generation
-    toast.info('Función de descarga PDF en desarrollo');
-  };
+  const record = (records as any[]).find((r) => r.id === recordId);
+
+  if (!record) {
+    toast.error('No se encontró la historia clínica');
+    return;
+  }
+
+  const pet = record.pets as any;
+  const owner = pet?.profiles as any;
+  const entries = ((record.clinical_entries || []) as any[]).sort(
+    (a, b) =>
+      new Date(a.visit_date).getTime() - new Date(b.visit_date).getTime()
+  );
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // ========= CABECERA (CLÍNICA + TÍTULO) =========
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CLÍNICA VETERINARIA', pageWidth / 2, 15, { align: 'center' });
+  doc.text('VETCARE360', pageWidth / 2, 22, { align: 'center' });
+
+  doc.setFontSize(13);
+  doc.text('HISTORIA CLÍNICA', pageWidth / 2, 32, { align: 'center' });
+
+  let y = 40;
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`HC N°: ${record.id.slice(0, 8)}`, 14, y);
+  doc.text(
+    `Fecha: ${format(new Date(), 'dd/MM/yyyy')}`,
+    pageWidth - 60,
+    y
+  );
+  y += 8;
+
+  // ========= DATOS DEL PROPIETARIO =========
+  doc.setFont('helvetica', 'bold');
+  doc.text('DATOS DEL PROPIETARIO', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Propietario: ${owner?.full_name || ''}`, 14, y);
+  y += 5;
+  doc.text(`Teléfono: ${owner?.phone || ''}`, 14, y);
+  // Aquí podrías agregar más líneas si luego guardas dirección, cédula, etc.
+  y += 8;
+
+  // ========= RESEÑA / DATOS DEL PACIENTE =========
+  const birthDate = pet?.birth_date
+    ? format(new Date(pet.birth_date), 'dd/MM/yyyy')
+    : '';
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('RESEÑA - DATOS DEL PACIENTE', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Nombre paciente: ${pet?.name || ''}`, 14, y);
+  doc.text(`Especie: ${pet?.species || ''}`, pageWidth / 2, y);
+  y += 5;
+
+  doc.text(`Raza: ${pet?.breed || ''}`, 14, y);
+  doc.text(`Sexo: ${pet?.sex || ''}`, pageWidth / 2, y);
+  y += 5;
+
+  doc.text(`Color: ${pet?.color || ''}`, 14, y);
+  doc.text(`Fecha nacimiento: ${birthDate}`, pageWidth / 2, y);
+  y += 8;
+
+  // ========= ANAMNESIS / HISTORIAL CLÍNICO =========
+  doc.setFont('helvetica', 'bold');
+  doc.text('ANAMNESIS / HISTORIAL CLÍNICO', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  if (!entries.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.text(
+      'No hay entradas clínicas registradas para esta mascota.',
+      14,
+      y
+    );
+  } else {
+    const tableBody = entries.map((entry) => [
+      entry.visit_date
+        ? format(new Date(entry.visit_date), 'dd/MM/yyyy')
+        : '',
+      entry.reason || '',
+      entry.diagnosis || '',
+      entry.treatment || '',
+      entry.weight ? `${entry.weight} kg` : '',
+      entry.temperature ? `${entry.temperature} °C` : '',
+      entry.next_appointment
+        ? format(new Date(entry.next_appointment), 'dd/MM/yyyy')
+        : '',
+    ]);
+
+    (autoTable as any)(doc, {
+      head: [
+        [
+          'Fecha',
+          'Motivo',
+          'Diagnóstico',
+          'Tratamiento',
+          'Peso',
+          'Temp.',
+          'Próx. cita',
+        ],
+      ],
+      body: tableBody,
+      startY: y,
+      styles: { fontSize: 8, cellPadding: 1 },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        fontStyle: 'bold',
+      },
+      columnStyles: {
+        0: { cellWidth: 18 },
+        1: { cellWidth: 40 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 35 },
+        4: { cellWidth: 15 },
+        5: { cellWidth: 15 },
+        6: { cellWidth: 20 },
+      },
+    });
+  }
+
+  doc.save(`historia_clinica_${pet?.name || 'paciente'}.pdf`);
+  toast.success('Historia clínica descargada en PDF');
+};
+
 
   return (
     <DashboardLayout>
