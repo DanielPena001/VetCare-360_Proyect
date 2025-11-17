@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+
 import { 
   FileText, 
   Download, 
@@ -24,6 +25,8 @@ import {
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { toast } from 'sonner';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const Reportes = () => {
   const [reportType, setReportType] = useState<'ventas' | 'inventario' | 'citas'>('ventas');
@@ -151,6 +154,64 @@ const Reportes = () => {
     exportToCSV(data, 'reporte_ventas', ['Fecha', 'Cliente', 'Total', 'Estado']);
   };
 
+    const handleExportSalesPDF = () => {
+    if (!salesReport?.sales || !salesReport.sales.length) {
+      toast.error('No hay ventas para exportar en el rango seleccionado');
+      return;
+    }
+
+    const doc = new jsPDF();
+
+    // Título
+    doc.setFontSize(16);
+    doc.text('Reporte de Ventas', 14, 20);
+
+    // Info de rango de fechas
+    doc.setFontSize(11);
+    doc.text(
+      `Período: ${format(new Date(startDate), 'dd/MM/yyyy')} - ${format(new Date(endDate), 'dd/MM/yyyy')}`,
+      14,
+      28
+    );
+    doc.text(
+      `Generado: ${format(new Date(), 'dd/MM/yyyy HH:mm')}`,
+      14,
+      34
+    );
+
+    // Cuerpo de la tabla
+    const body = salesReport.sales.map((sale: any) => {
+      const profile = sale.profiles as any;
+
+      const items = (sale.sale_items || [])
+        .map((item: any) => {
+          const product = item.products as any;
+          return `${product?.name || 'Producto'} (${item.quantity})`;
+        })
+        .join(', ');
+
+      return [
+        format(new Date(sale.created_at), 'dd/MM/yyyy HH:mm'),
+        profile?.full_name || 'N/A',
+        `$${Number(sale.total).toFixed(2)}`,
+        sale.payment_status === 'paid' ? 'Pagado' : 'Pendiente',
+        items || '—',
+      ];
+    });
+
+    autoTable(doc, {
+      head: [['Fecha', 'Cliente', 'Total', 'Estado', 'Items']],
+      body,
+      startY: 40,
+      styles: { fontSize: 9 },
+      headStyles: { fontStyle: 'bold' },
+    });
+
+    doc.save(`reporte_ventas_${format(new Date(), 'yyyy-MM-dd')}.pdf`);
+    toast.success('Reporte PDF de ventas generado');
+  };
+
+
   const handleExportInventory = () => {
     if (!inventoryReport?.products) return;
     
@@ -266,9 +327,9 @@ const Reportes = () => {
                 </>
               )}
 
-              <div className="flex items-end">
+                            <div className="flex flex-col sm:flex-row gap-2 items-end">
                 <Button 
-                  className="w-full gradient-primary"
+                  className="w-full sm:w-auto gradient-primary"
                   onClick={() => {
                     if (reportType === 'ventas') handleExportSales();
                     if (reportType === 'inventario') handleExportInventory();
@@ -279,7 +340,21 @@ const Reportes = () => {
                   <Download className="mr-2 h-4 w-4" />
                   Exportar CSV
                 </Button>
+
+                {reportType === 'ventas' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto"
+                    onClick={handleExportSalesPDF}
+                    disabled={isLoading || !salesReport?.sales?.length}
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Exportar PDF (ventas)
+                  </Button>
+                )}
               </div>
+
             </div>
           </CardContent>
         </Card>

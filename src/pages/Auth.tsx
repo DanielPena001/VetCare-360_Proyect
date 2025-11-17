@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Separator } from '@/components/ui/separator';
+import { FcGoogle } from 'react-icons/fc';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -170,6 +172,26 @@ const Auth = () => {
     }
   };
 
+  const handleGoogleSignIn = async () => {
+  const { error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin,
+    },
+  });
+
+  if (error) {
+    console.error(error);
+    toast({
+      title: 'Error al iniciar sesión',
+      description: 'No se pudo iniciar sesión con Google. Inténtalo de nuevo.',
+      variant: 'destructive', // rojo
+    });
+  }
+};
+
+
+
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-primary/10 via-background to-secondary/10 p-4">
       <Card className="w-full max-w-md">
@@ -187,6 +209,24 @@ const Auth = () => {
           <CardDescription>Sistema de Gestión Veterinaria</CardDescription>
         </CardHeader>
         <CardContent>
+           <div className="space-y-4 mb-6">
+              <Button
+              type="button"
+              variant="outline"
+              className="w-full flex items-center justify-center gap-2"
+              onClick={handleGoogleSignIn}>
+              <FcGoogle className="h-5 w-5" />
+              <span>Continuar con Google</span>
+             </Button>
+             <div className="flex items-center gap-2">
+              <Separator className="flex-1" />
+              <span className="text-xs text-muted-foreground">
+                o usa tu correo electrónico
+              </span>
+              <Separator className="flex-1" />
+            </div>
+           </div>
+
           <Tabs defaultValue="signin" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="signin">Iniciar Sesión</TabsTrigger>
