@@ -103,46 +103,51 @@ const Citas = () => {
   });
 
   // Generate teleconference URL (Google Meet real)
-  const generateTeleconferenceMutation = useMutation({
-    mutationFn: async (appointment: any) => {
-      const { id, scheduled_for } = appointment;
+const generateTeleconferenceMutation = useMutation({
+  mutationFn: async (appointment: any) => {
+    const { id, scheduled_for } = appointment;
 
-      const response = await fetch(
-        "https://xueqqvtjflbyjlnpxwpg.functions.supabase.co/create-meet",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            appointmentId: id,
-            datetime: scheduled_for,
-          }),
-        }
-      );
+    if (!scheduled_for) {
+      throw new Error('La cita no tiene fecha/hora programada');
+    }
 
-      const data = await response.json();
+    const { data, error } = await supabase.functions.invoke('create-meet', {
+      body: {
+        appointmentId: id,
+        datetime: scheduled_for,
+      },
+    });
 
-      if (data.error) throw new Error(data.error);
+    if (error) {
+      console.error(error);
+      throw new Error(error.message || 'Error al generar la reunión');
+    }
 
-      const meetUrl = data.url;
+    const meetUrl = (data as any)?.url as string | undefined;
 
-      const { error } = await supabase
-        .from("appointments")
-        .update({ teleconference_url: meetUrl })
-        .eq("id", id);
+    if (!meetUrl) {
+      throw new Error('La función no devolvió la URL de la reunión');
+    }
 
-      if (error) throw error;
+    const { error: updateError } = await supabase
+      .from('appointments')
+      .update({ teleconference_url: meetUrl })
+      .eq('id', id);
 
-      return meetUrl;
-    },
-    onSuccess: (url) => {
-      toast.success("Reunión generada");
-      queryClient.invalidateQueries({ queryKey: ["vet-appointments"] });
-      window.open(url, "_blank");
-    },
-    onError: (error) => {
-      toast.error("Error al generar Google Meet: " + error.message);
-    },
-  });
+    if (updateError) throw updateError;
+
+    return meetUrl;
+  },
+  onSuccess: (url) => {
+    toast.success('Reunión generada');
+    queryClient.invalidateQueries({ queryKey: ['vet-appointments'] });
+    window.open(url, '_blank');
+  },
+  onError: (error: any) => {
+    console.error(error);
+    toast.error('Error al generar Google Meet: ' + (error?.message || 'Error desconocido'));
+  },
+});
 
   const getStatusBadge = (status: string) => {
     const variants: Record<string, 'default' | 'secondary' | 'outline'> = {
@@ -328,19 +333,20 @@ const handleOpenWhatsApp = () => {
                       <Calendar className="h-4 w-4 mr-1" />
                       Completar
                     </Button>
-                    {appointment.type === 'teleconsulta' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() =>
-                          appointment.teleconference_url
-                            ? window.open(appointment.teleconference_url, '_blank')
-                            : generateTeleconferenceMutation.mutate(appointment.id)
-                        }
-                      >
-                        <Video className="h-4 w-4" />
-                      </Button>
-                    )}
+                      {appointment.type === 'teleconsulta' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() =>
+                            appointment.teleconference_url
+                              ? window.open(appointment.teleconference_url, '_blank')
+                              : generateTeleconferenceMutation.mutate(appointment)
+                          }
+                        >
+                          <Video className="h-4 w-4" />
+                        </Button>
+                      )}
+
                   </>
                 )}
 

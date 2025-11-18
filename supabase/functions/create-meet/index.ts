@@ -1,3 +1,4 @@
+// @ts-nocheck
 // supabase/functions/create-google-meet/index.ts
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -12,9 +13,9 @@ const corsHeaders = {
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
-const CLIENT_ID = Deno.env.get("CLIENT_ID") ?? "";
-const CLIENT_SECRET = Deno.env.get("CLIENT_SECRET") ?? "";
-const REFRESH_TOKEN = Deno.env.get("REFRESH_TOKEN") ?? "";
+const CLIENT_ID = Deno.env.get("GOOGLE_CLIENT_ID") ?? "";
+const CLIENT_SECRET = Deno.env.get("GOOGLE_CLIENT_SECRET") ?? "";
+const REFRESH_TOKEN = Deno.env.get("GOOGLE_REFRESH_TOKEN") ?? "";
 const GOOGLE_CALENDAR_ID = Deno.env.get("GOOGLE_CALENDAR_ID") ?? "";
 
 // Cliente admin para actualizar la BD
