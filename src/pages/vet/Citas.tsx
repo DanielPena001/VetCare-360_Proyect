@@ -102,25 +102,45 @@ const Citas = () => {
     },
   });
 
-  // Generate teleconference URL
+  // Generate teleconference URL (Google Meet real)
   const generateTeleconferenceMutation = useMutation({
-    mutationFn: async (appointmentId: string) => {
-      const url = `https://meet.vetcare360.app/${appointmentId}`;
+    mutationFn: async (appointment: any) => {
+      const { id, scheduled_for } = appointment;
+
+      const response = await fetch(
+        "https://xueqqvtjflbyjlnpxwpg.functions.supabase.co/create-meet",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            appointmentId: id,
+            datetime: scheduled_for,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.error) throw new Error(data.error);
+
+      const meetUrl = data.url;
+
       const { error } = await supabase
-        .from('appointments')
-        .update({ teleconference_url: url })
-        .eq('id', appointmentId);
+        .from("appointments")
+        .update({ teleconference_url: meetUrl })
+        .eq("id", id);
 
       if (error) throw error;
-      return url;
+
+      return meetUrl;
     },
     onSuccess: (url) => {
-      toast.success('URL de teleconsulta generada');
-      queryClient.invalidateQueries({ queryKey: ['vet-appointments'] });
-      window.open(url, '_blank');
+      toast.success("Reunión generada");
+      queryClient.invalidateQueries({ queryKey: ["vet-appointments"] });
+      window.open(url, "_blank");
     },
     onError: (error) => {
-      toast.error('Error al generar URL: ' + error.message);
+      toast.error("Error al generar Google Meet: " + error.message);
     },
   });
 
