@@ -12,6 +12,10 @@ import { toast } from 'sonner';
 import { Plus, Trash2, Search, Download } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import { FileText } from 'lucide-react'; 
+
 
 interface CartItem {
   product_id: string;
@@ -28,7 +32,7 @@ const Ventas = () => {
   const [dateFilter, setDateFilter] = useState('');
   const queryClient = useQueryClient();
 
-  // Fetch products
+  
   const { data: products = [] } = useQuery({
     queryKey: ['products-for-sale', productSearch],
     queryFn: async () => {
@@ -42,11 +46,11 @@ const Ventas = () => {
     },
   });
 
-  // Fetch clients
+  
   const { data: clients = [] } = useQuery({
     queryKey: ['clients'],
     queryFn: async () => {
-      // First get all client user_ids
+      
       const { data: clientRoles, error: rolesError } = await supabase
         .from('user_roles')
         .select('user_id')
@@ -57,7 +61,7 @@ const Ventas = () => {
 
       const clientIds = clientRoles.map(r => r.user_id);
 
-      // Then get profiles for those users
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -68,7 +72,7 @@ const Ventas = () => {
     },
   });
 
-  // Fetch sales
+  
   const { data: sales = [] } = useQuery({
     queryKey: ['sales', dateFilter],
     queryFn: async () => {
@@ -86,6 +90,145 @@ const Ventas = () => {
       return data;
     },
   });
+
+  const downloadInvoice = (sale: any) => {
+  if (!sale) {
+    toast.error('No se encontró la venta');
+    return;
+  }
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const createdAt = sale.created_at ? new Date(sale.created_at) : new Date();
+  const customer = (sale.profiles || {}) as any;
+  const customerName = customer.full_name || 'Cliente';
+  const customerPhone = customer.phone || '';
+
+  // ===== CABECERA =====
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CLÍNICA VETERINARIA EL MUNDO DE HACHI', pageWidth / 2, 15, {
+    align: 'center',
+  });
+
+  doc.setFontSize(12);
+  doc.text('FACTURA DE VENTA - COPIA ADMIN', pageWidth / 2, 23, {
+    align: 'center',
+  });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Factura N°: ${sale.id.slice(0, 8)}`, 14, 32);
+  doc.text(
+    `Fecha: ${format(createdAt, 'dd/MM/yyyy HH:mm')}`,
+    pageWidth - 70,
+    32
+  );
+
+  doc.text(
+    `Estado: ${
+      sale.payment_status === 'paid' ? 'PAGADO' : 'PENDIENTE'
+    }`,
+    14,
+    38
+  );
+
+  let y = 46;
+
+  // ===== DATOS DEL CLIENTE =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('DATOS DEL CLIENTE', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Nombre: ${customerName}`, 14, y);
+  y += 5;
+  doc.text(`Teléfono: ${customerPhone}`, 14, y);
+  y += 8;
+
+  // ===== DETALLE DE LA VENTA =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('DETALLE DE LA VENTA', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  const items = (sale.sale_items || []) as any[];
+
+  if (!items.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.text('No hay ítems en esta venta.', 14, y);
+  } else {
+    const body = items.map((item) => {
+      const product = (item.products || {}) as any;
+      const name = product.name || 'Producto';
+      const quantity = Number(item.quantity || 0);
+      const unitPrice = Number(
+        item.unit_price ?? item.price ?? 0
+      );
+      const subtotal =
+        Number(item.subtotal ?? unitPrice * quantity);
+
+      return [
+        name,
+        quantity.toString(),
+        `$${unitPrice.toFixed(2)}`,
+        `$${subtotal.toFixed(2)}`,
+      ];
+    });
+
+    (autoTable as any)(doc, {
+      head: [['Producto', 'Cant.', 'Precio', 'Subtotal']],
+      body,
+      startY: y,
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        fontStyle: 'bold',
+      },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 20, halign: 'right' },
+        2: { cellWidth: 30, halign: 'right' },
+        3: { cellWidth: 30, halign: 'right' },
+      },
+    });
+
+    // @ts-ignore
+    y = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // ===== TOTALES =====
+  const total = Number(sale.total || 0);
+  doc.setFont('helvetica', 'bold');
+  doc.text(
+    `TOTAL: $${total.toFixed(2)}`,
+    pageWidth - 14,
+    y,
+    { align: 'right' }
+  );
+  y += 10;
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    'Copia para administración. Conserve este documento para control contable.',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
+  );
+
+  doc.save(
+    `factura_admin_${sale.id.slice(0, 8)}_${format(
+      createdAt,
+      'yyyy-MM-dd'
+    )}.pdf`
+  );
+
+  toast.success('Factura PDF (admin) descargada');
+};
+
 
   // Create sale mutation
   const createSaleMutation = useMutation({
@@ -136,7 +279,7 @@ const Ventas = () => {
     },
   });
 
-  // Update payment status mutation
+  
   const updatePaymentStatusMutation = useMutation({
     mutationFn: async ({ saleId, status }: { saleId: string; status: string }) => {
       const { error } = await supabase
@@ -365,6 +508,19 @@ const Ventas = () => {
                   <TableBody>
                     {sales.map((sale) => (
                       <TableRow key={sale.id}>
+                        
+                        <TableCell className="flex justify-end gap-2">
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => downloadInvoice(sale)}
+                          >
+                            <FileText className="mr-2 h-4 w-4" />
+                            Factura PDF
+                          </Button>
+                        </TableCell>
+
+
                         <TableCell>
                           {format(new Date(sale.created_at), 'dd/MM/yyyy HH:mm', { locale: es })}
                         </TableCell>

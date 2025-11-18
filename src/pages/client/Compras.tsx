@@ -11,6 +11,10 @@ import { ShoppingBag, Download, Eye } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { useState } from 'react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+
 
 const Compras = () => {
   const { user } = useAuth();
@@ -41,10 +45,143 @@ const Compras = () => {
     return <Badge variant={cfg.variant}>{cfg.label}</Badge>;
   };
 
-  const downloadInvoice = (saleId: string) => {
-    // Placeholder for PDF generation
-    toast.info('Generación de facturas PDF próximamente disponible');
-  };
+  const downloadInvoice = (sale: any) => {
+  if (!sale) {
+    toast.error('No se encontró la venta');
+    return;
+  }
+
+  const doc = new jsPDF('p', 'mm', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const createdAt = sale.created_at ? new Date(sale.created_at) : new Date();
+  const customer = (sale.profiles || {}) as any; // si en el select traes profiles
+  const customerName = customer.full_name || 'Cliente';
+  const customerPhone = customer.phone || '';
+
+  // ===== CABECERA =====
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('CLÍNICA VETERINARIA EL MUNDO DE HACHI', pageWidth / 2, 15, {
+    align: 'center',
+  });
+
+  doc.setFontSize(12);
+  doc.text('FACTURA DE VENTA', pageWidth / 2, 23, { align: 'center' });
+
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Factura N°: ${sale.id.slice(0, 8)}`, 14, 32);
+  doc.text(
+    `Fecha: ${format(createdAt, 'dd/MM/yyyy HH:mm')}`,
+    pageWidth - 70,
+    32
+  );
+
+  doc.text(
+    `Estado: ${
+      sale.payment_status === 'paid' ? 'PAGADO' : 'PENDIENTE'
+    }`,
+    14,
+    38
+  );
+
+  let y = 46;
+
+  // ===== DATOS DEL CLIENTE =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('DATOS DEL CLIENTE', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`Nombre: ${customerName}`, 14, y);
+  y += 5;
+  doc.text(`Teléfono: ${customerPhone}`, 14, y);
+  y += 8;
+
+  // ===== DETALLE DE LA VENTA =====
+  doc.setFont('helvetica', 'bold');
+  doc.text('DETALLE DE LA VENTA', 14, y);
+  doc.line(14, y + 1, pageWidth - 14, y + 1);
+  y += 6;
+
+  const items = (sale.sale_items || []) as any[];
+
+  if (!items.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.text('No hay ítems en esta venta.', 14, y);
+  } else {
+    const body = items.map((item) => {
+      const product = (item.products || {}) as any;
+      const name = product.name || 'Producto';
+      const quantity = Number(item.quantity || 0);
+      const unitPrice = Number(
+        item.unit_price ?? item.price ?? 0
+      );
+      const subtotal =
+        Number(item.subtotal ?? unitPrice * quantity);
+
+      return [
+        name,
+        quantity.toString(),
+        `$${unitPrice.toFixed(2)}`,
+        `$${subtotal.toFixed(2)}`,
+      ];
+    });
+
+    (autoTable as any)(doc, {
+      head: [['Producto', 'Cant.', 'Precio', 'Subtotal']],
+      body,
+      startY: y,
+      styles: { fontSize: 9, cellPadding: 2 },
+      headStyles: {
+        fillColor: [230, 230, 230],
+        fontStyle: 'bold',
+      },
+      columnStyles: {
+        0: { cellWidth: 80 },
+        1: { cellWidth: 20, halign: 'right' },
+        2: { cellWidth: 30, halign: 'right' },
+        3: { cellWidth: 30, halign: 'right' },
+      },
+    });
+
+    // posición después de la tabla
+    // @ts-ignore
+    y = (doc as any).lastAutoTable.finalY + 10;
+  }
+
+  // ===== TOTALES =====
+  const total = Number(sale.total || 0);
+  doc.setFont('helvetica', 'bold');
+  doc.text(
+    `TOTAL: $${total.toFixed(2)}`,
+    pageWidth - 14,
+    y,
+    { align: 'right' }
+  );
+  y += 10;
+
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.text(
+    'Gracias por su compra. Ante cualquier duda, comuníquese con la clínica.',
+    pageWidth / 2,
+    y,
+    { align: 'center' }
+  );
+
+  doc.save(
+    `factura_${sale.id.slice(0, 8)}_${format(
+      createdAt,
+      'yyyy-MM-dd'
+    )}.pdf`
+  );
+
+  toast.success('Factura PDF descargada');
+};
+
 
   return (
     <DashboardLayout>

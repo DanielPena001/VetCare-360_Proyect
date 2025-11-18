@@ -111,7 +111,7 @@ const Auth = () => {
 
       toast({
         title: 'Registro exitoso',
-        description: 'Cuenta creada correctamente. Iniciando sesión...',
+        description: 'CONFIRMA SU CUENTA EN TU CORREO',
       });
     } catch (error) {
       if (error instanceof z.ZodError) {
